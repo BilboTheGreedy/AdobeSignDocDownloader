@@ -1,0 +1,6 @@
+Data*
+*.exe
+go.mod
+go.sum
+log.txt
+config.json
