@@ -94,7 +94,6 @@ func main() {
 
 		//Goroutine start for: USER/Agreements
 		for _, group := range data.Groups.GroupInfoList {
-			fmt.Println(group)
 			if len(group.GroupMembers.UserInfoList) != 0 {
 				memberCount := len(group.GroupMembers.UserInfoList)
 				members := make(chan *UserInfoList, memberCount)
@@ -384,7 +383,7 @@ func (data *GroupInfoList) QueryGroupMembers(AccessToken string, URI string) {
 }
 
 func GetGroupMembers(AccessToken string, URI string, GroupID string, GroupName string, target interface{}, debug bool) error {
-	fmt.Println("Group Members for group", GroupName)
+
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
