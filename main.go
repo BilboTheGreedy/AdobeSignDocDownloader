@@ -46,7 +46,7 @@ func main() {
 	log.SetOutput(mw)
 	er := io.MultiWriter(os.Stderr, logFile)
 	log.SetOutput(er)
-	bCache := flag.Bool("v", false, "Cache Data")
+	bCache := flag.Bool("cache", false, "Make Cache Data")
 	bConsoleText := flag.Bool("console", false, "output console text")
 	bDebug := flag.Bool("debug", false, "Explain what's happening while program runs")
 	iMaxJobs := flag.Int("max", 40, "Max number of downloads concurrently")
