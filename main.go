@@ -20,13 +20,14 @@ import (
 )
 
 var (
-	done        chan struct{}
-	ch          = make(chan int)
-	wg          sync.WaitGroup
-	debug       bool
-	cfg         Configuration
-	pb          progressbar.ProgressBar
-	ConsoleText bool
+	done            chan struct{}
+	ch              = make(chan int)
+	wg              sync.WaitGroup
+	debug           bool
+	cfg             Configuration
+	pb              progressbar.ProgressBar
+	ConsoleText     bool
+	StatusRequested string
 )
 
 var r, _ = regexp.Compile("\\\\|\\||-|\"|/|:|\\*|\\?|<|>")
@@ -49,10 +50,12 @@ func main() {
 	bConsoleText := flag.Bool("console", false, "output console text")
 	bDebug := flag.Bool("debug", false, "Explain what's happening while program runs")
 	iMaxJobs := flag.Int("max", 40, "Max number of downloads concurrently")
+	sStatusReq := flag.String("status", "SIGNED", "Document Status")
 	flag.Parse()
 	fmt.Fprintf(os.Stdout, "Cache mode set? %v\n", *bCache)
 	debug = *bDebug
 	ConsoleText = *bConsoleText
+	StatusRequested = *sStatusReq
 	cfg = LoadConfiguration("config.json")
 	cfg.QueryEndpoint()
 	if *bCache == true {
@@ -132,7 +135,7 @@ func main() {
 			json.Unmarshal([]byte(group), &f)
 			c_data.Groups.GroupInfoList = append(c_data.Groups.GroupInfoList, &f)
 		}
-		data_agreementCount := c_data.CountAgreements("SIGNED")
+		data_agreementCount := c_data.CountAgreements(StatusRequested)
 		fmt.Println("Number of agreements to process:", data_agreementCount)
 		//bar := progressbar.Default(int64(data_agreementCount))
 		if ConsoleText != true {
@@ -147,8 +150,6 @@ func main() {
 				//Maximum of concurrent downloads at one time
 				//So Adobe don't lock us out
 				maxGoroutines := *iMaxJobs
-				//We only want agreement with following status
-				StatusRequested := Signed
 				sem := make(chan int, maxGoroutines)
 				//for each agreement
 
