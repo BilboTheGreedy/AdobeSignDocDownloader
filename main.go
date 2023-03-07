@@ -29,7 +29,7 @@ var (
 	ConsoleText bool
 )
 
-var r, _ = regexp.Compile("\\\\|-|\"|/|:|\\*|\\?|<|>")
+var r, _ = regexp.Compile("\\\\|\\||-|\"|/|:|\\*|\\?|<|>")
 
 // MakeFilenameWindowsFriendly removes characters not permitted in file/directory names on Windows
 func MakeFilenameWindowsFriendly(name string) string {
