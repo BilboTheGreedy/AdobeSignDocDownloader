@@ -19,6 +19,8 @@ Download documents. Set a hefty max concurrency with max flag like 50.
 ## Usage/Examples
 print output to console and debug flags exist.
 Console flag removes progressbar. 
+By default all "SIGNED" documents are downloaded. If you want any other, specify status flag.
+
 ```bash
-.\AdobeSignDocDownloader.exe -max 100 -console -debug
+.\AdobeSignDocDownloader.exe -max 100 -console -debug -status "CANCELLED"
 ```
