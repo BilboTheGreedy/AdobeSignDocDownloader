@@ -51,7 +51,17 @@ func main() {
 	bDebug := flag.Bool("debug", false, "Explain what's happening while program runs")
 	iMaxJobs := flag.Int("max", 40, "Max number of downloads concurrently")
 	sStatusReq := flag.String("status", "SIGNED", "Document Status")
+	sHttpProxy := flag.String("proxyaddr", "", "Document Status")
 	flag.Parse()
+	//Set Env
+	if len(*sHttpProxy) > 0 {
+		fmt.Println("Set Http Proxy to:", *sHttpProxy)
+		os.Setenv("HTTP_PROXY", *sHttpProxy)
+		os.Setenv("HTTPs_PROXY", *sHttpProxy)
+		os.Setenv("http_proxy", *sHttpProxy)
+		os.Setenv("https_proxy", *sHttpProxy)
+	}
+
 	fmt.Fprintf(os.Stdout, "Cache mode set? %v\n", *bCache)
 	debug = *bDebug
 	ConsoleText = *bConsoleText
@@ -250,8 +260,10 @@ func DownloadAgreement(ACCESSTOKEN string, baseUri string, AgreementID string, U
 	defer out.Close()
 
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		Proxy:           http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS13},
 	}
+
 	url := baseUri + "api/rest/v6/agreements/" + AgreementID + "/combinedDocument"
 	if debug == true {
 		fmt.Println("URL:>", url)
@@ -301,6 +313,7 @@ func GetUserAgreementsWorker(id int, AccessToken string, URI string, members <-c
 
 func GetUserAgreements(ACCESSTOKEN string, baseUri string, target interface{}, UserID string, debug bool) error {
 	tr := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	url := baseUri + "api/rest/v6/agreements?pageSize=10000"
@@ -329,6 +342,7 @@ func (cfg *Configuration) QueryEndpoint() {
 	//GetEndpoint(cfg.Session.AccessToken, cfg)
 
 	tr := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	url := "https://api.na1.adobesign.com/api/rest/v6/baseUris"
@@ -354,6 +368,7 @@ func (cfg *Configuration) QueryEndpoint() {
 
 func (data *Data) QueryGroups(cfg Configuration) {
 	tr := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	url := cfg.Session.baseURI.APIAccessPoint + "api/rest/v6/groups?pageSize=10000"
@@ -385,6 +400,7 @@ func (data *GroupInfoList) QueryGroupMembers(AccessToken string, URI string) {
 func GetGroupMembers(AccessToken string, URI string, GroupID string, GroupName string, target interface{}, debug bool) error {
 
 	tr := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 	}
 	url := URI + "api/rest/v6/groups/" + GroupID + "/users?pageSize=10000"
