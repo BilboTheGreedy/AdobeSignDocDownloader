@@ -24,3 +24,23 @@ By default all "SIGNED" documents are downloaded. If you want any other, specify
 ```bash
 .\AdobeSignDocDownloader.exe -max 100 -console -debug -status "CANCELLED"
 ```
+
+```bash
+Usage AdobeSignDocDownloader.exe:
+  -cache
+        Make Cache Data
+  -chart
+        Generate charts and tables
+  -console
+        output console text
+  -debug
+        Explain what's happening while program runs
+  -max int
+        Max number of downloads concurrently (default 40)
+  -proxyaddr string
+        set proxy server
+  -status string
+        Document Status (default "SIGNED")
+  -verify
+        Explain what's happening while program runs
+```
