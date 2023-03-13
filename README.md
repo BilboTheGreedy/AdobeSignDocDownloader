@@ -42,5 +42,5 @@ Usage AdobeSignDocDownloader.exe:
   -status string
         Document Status (default "SIGNED")
   -verify
-        Explain what's happening while program runs
+        Verify that files have been downloaded
 ```
