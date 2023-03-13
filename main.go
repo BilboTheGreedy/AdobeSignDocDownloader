@@ -7,21 +7,17 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/TwiN/go-color"
-	"github.com/go-echarts/go-echarts/v2/charts"
 	"github.com/go-echarts/go-echarts/v2/components"
-	"github.com/go-echarts/go-echarts/v2/opts"
 	scribble "github.com/nanobox-io/golang-scribble"
 	"github.com/schollz/progressbar/v3"
 )
@@ -70,8 +66,9 @@ func main() {
 		os.Setenv("http_proxy", *sHttpProxy)
 		os.Setenv("https_proxy", *sHttpProxy)
 	}
-
-	fmt.Fprintf(os.Stdout, "Cache mode set? %v\n", *bCache)
+	fmt.Fprintf(os.Stdout, "\nAdobe Sign Document Downloader by Daniel.Rapp@Kontract.se\n")
+	fmt.Fprintf(os.Stdout, "\nSource: https://github.com/BilboTheGreedy/AdobeSignDocDownloader\n")
+	fmt.Fprintf(os.Stdout, "\nCache mode set? %v\n", *bCache)
 	debug = *bDebug
 	ConsoleText = *bConsoleText
 	StatusRequested = *sStatusReq
@@ -79,102 +76,19 @@ func main() {
 	cfg.QueryEndpoint()
 
 	if *bVerify == true {
+
 		VerifyPaths(StatusRequested)
 		return
 	}
 
 	if *bChart == true {
-		NewTable()
+		GenerateStatusTable()
 		VerifyTable()
-		data := make([]GeoCount, 0)
-		// Read JSON data from file
-		jsonData, err := ioutil.ReadFile("./Data/MergedCount.json")
-		if err != nil {
-			panic(err)
-		}
-		// Unmarshal JSON data into slice of Data structs
-		err = json.Unmarshal(jsonData, &data)
-		if err != nil {
-			panic(err)
-		}
 
-		mapData := []opts.MapData{}
-		for _, d := range data {
-			mapData = append(mapData, opts.MapData{Name: d.Name, Value: d.TotalAgreements})
-
-		}
-
-		mc := charts.NewMap()
-
-		mc.RegisterMapType("world")
-		//mc.Assets.JSAssets.Add("maps/sweden.js")
-		mc.SetGlobalOptions(
-			charts.WithTitleOpts(opts.Title{Title: "Epiroc - Agreement owner by Country"}),
-			charts.WithVisualMapOpts(opts.VisualMap{
-				Show:       true,
-				Calculable: true,
-				Type:       "piecewise",
-				InRange:    &opts.VisualMapInRange{Color: []string{"#50a3ba", "#eac736", "#d94e5d"}},
-				Max:        10000,
-				Min:        0,
-			}),
-		)
-		mc.SetGlobalOptions(charts.WithTooltipOpts(opts.Tooltip{Show: true}),
-			charts.WithParallelComponentOpts(opts.ParallelComponent{Top: "20%", Bottom: "20%"}))
-		mc.AddSeries("map", mapData)
 		f, err := os.Create("charts.html")
 		if err != nil {
 			fmt.Println(err)
 		}
-		///
-		db, _ := scribble.New("./Data", nil)
-		// Read from the cache database
-		groups, _ := db.ReadAll("Groups")
-
-		// iterate
-		c_data := Data{}
-		for _, group := range groups {
-			f := GroupInfoList{}
-			json.Unmarshal([]byte(group), &f)
-			c_data.Groups.GroupInfoList = append(c_data.Groups.GroupInfoList, &f)
-		}
-
-		statusCount := make(map[string]int)
-		for _, group := range c_data.Groups.GroupInfoList {
-			for _, userInfo := range group.GroupMembers.UserInfoList {
-				for _, agreement := range userInfo.Agreements.UserAgreementList {
-					statusCount[agreement.Status]++
-				}
-			}
-		}
-		var pdata []opts.PieData
-		for status, count := range statusCount {
-			pdata = append(pdata, opts.PieData{Name: status, Value: count})
-		}
-		pie := charts.NewPie()
-
-		pie.SetGlobalOptions(
-			charts.WithLegendOpts(opts.Legend{
-				Show: true,
-			}),
-			charts.WithTooltipOpts(opts.Tooltip{Show: true}),
-			charts.WithParallelComponentOpts(opts.ParallelComponent{Top: "100%", Bottom: "100%"}),
-		)
-
-		pie.AddSeries("Agreement Status", pdata).
-			SetSeriesOptions(charts.WithLabelOpts(
-				opts.Label{
-					Show:      true,
-					Formatter: "{b}: {c}",
-				}),
-				charts.WithPieChartOpts(opts.PieChart{
-					Radius:   []string{"30%", "75%"},
-					RoseType: "radius",
-					Center:   []string{"50%", "60%"},
-				}),
-			)
-
-			////
 		page := components.NewPage()
 		page.Assets.AddCustomizedCSSAssets("background-color: coral")
 		page.Theme = "vintage"
@@ -182,13 +96,12 @@ func main() {
 		page.SetLayout(components.PageCenterLayout)
 
 		page.AddCharts(
-			mc,
-			pie,
+			GetADInfo(),
+			GetPieData(),
 		)
 
 		page.Render(io.MultiWriter(f))
 		return
-
 	}
 
 	cfg.QueryEndpoint()
@@ -384,11 +297,9 @@ func (data *Data) CountAgreements(StatusRequested string) int {
 func (data *UserAgreementList) IsAgreementDownloaded(cfg Configuration, GroupName string, UserID string, UserEmail string) bool {
 	name := MakeFilenameWindowsFriendly(data.Name) + "-Combined.pdf"
 	//fullPath := cfg.DownloadLocation + "\\" + GroupName + "\\" + UserEmail + "\\" + MakeFilenameWindowsFriendly(data.Name) + "(" + data.ID + ")\\"
-	p := filepath.Join(cfg.DownloadLocation, GroupName, UserEmail, name+"("+data.ID+")")
+	p := filepath.Join(cfg.DownloadLocation, GroupName, UserEmail, MakeFilenameWindowsFriendly(data.Name)+" ("+data.ID+")")
 	completePath := filepath.Join(p, name)
-	fmt.Println(completePath)
 	if _, err := os.Stat(completePath); err == nil {
-
 		return true
 
 	} else if errors.Is(err, os.ErrNotExist) {
@@ -403,7 +314,7 @@ func (data *UserAgreementList) IsAgreementDownloaded(cfg Configuration, GroupNam
 func (data *UserAgreementList) GetAgreementPath(cfg Configuration, GroupName string, UserID string, UserEmail string) string {
 	name := MakeFilenameWindowsFriendly(data.Name) + "-Combined.pdf"
 	//fullPath := cfg.DownloadLocation + "\\" + GroupName + "\\" + UserEmail + "\\" + MakeFilenameWindowsFriendly(data.Name) + "(" + data.ID + ")\\"
-	p := filepath.Join(cfg.DownloadLocation, GroupName, UserEmail, name+"("+data.ID+")")
+	p := filepath.Join(cfg.DownloadLocation, GroupName, UserEmail, MakeFilenameWindowsFriendly(data.Name)+" ("+data.ID+")")
 	completePath := filepath.Join(p, name)
 	if _, err := os.Stat(completePath); err == nil {
 		return completePath
@@ -523,8 +434,8 @@ func DownloadDocuments(ACCESSTOKEN string, baseUri string, AgreementID string, D
 		req.Header.Add("Authorization", "Bearer "+ACCESSTOKEN)
 		client := &http.Client{Transport: tr}
 		resp, err := client.Do(req)
-		if err != nil && strings.Contains(err.Error(), "wsarecv") || err != nil && strings.Contains(err.Error(), "Unsolicited") {
-			// wsarecv error occurred
+		if err != nil {
+			// error occurred
 			println(color.Colorize(color.Yellow, "\nRetry Download Count: "+strconv.Itoa(i)) + " : " + fileName)
 			time.Sleep(time.Second * 10) // wait for 10 seconds
 			continue                     // retry request
@@ -573,8 +484,8 @@ func DownloadAgreement(ACCESSTOKEN string, baseUri string, AgreementID string, U
 		req.Header.Add("Authorization", "Bearer "+ACCESSTOKEN)
 		client := &http.Client{Transport: tr}
 		resp, err := client.Do(req)
-		if err != nil && strings.Contains(err.Error(), "wsarecv") || err != nil && strings.Contains(err.Error(), "Unsolicited") {
-			// wsarecv error occurred
+		if err != nil {
+			// error occurred
 			println(color.Colorize(color.Yellow, "\nRetry Download Count: "+strconv.Itoa(i)) + " : " + fileName)
 			time.Sleep(time.Second * 10) // wait for 10 seconds
 			continue                     // retry request

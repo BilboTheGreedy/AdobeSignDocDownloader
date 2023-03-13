@@ -1,19 +1,18 @@
-<!-- Include the jQuery and DataTables JavaScript files -->
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://cdn.datatables.net/1.11.3/js/jquery.dataTables.min.js"></script>
-<link rel="stylesheet" href="https://cdn.datatables.net/searchpanes/2.1.1/css/searchPanes.dataTables.min.css">
-<script src="https://cdn.datatables.net/searchpanes/2.1.1/js/dataTables.searchPanes.min.js"></script>
-<script src="https://cdn.datatables.net/select/1.6.1/js/dataTables.select.min.js"></script>
-<link rel="stylesheet" href="https://cdn.datatables.net/1.11.3/css/jquery.dataTables.min.css">
+{{template "sources.html"}}
+
 <style>
-    .downloaded {
-    background-color: red;
+    .alert {
+  padding: 20px;
+  background-color: #36f4d1; /* Red */
+  color: rgb(75, 75, 75);
+  margin-bottom: 15px;
 }
+
 </style>
 
-<div class="alert alert-info" role="alert">
+<div class="alert">
     Only the combined document is checked if downloaded in this table. Note that this page takes a very long time to finish loading.
-  </div>
+</div>
 
 <div class="container">
     <div class="row justify-content-md-center">
@@ -21,11 +20,12 @@
     </div>
     <div class="row">
       <div class="col-md-auto">
-        
-<table id="myTable" class="table">
+        <br>
+
+
+<table id="myTable" class="display nowrap" style="width:100%">
     <thead>
         <tr>
-            <th>AgreementID</th>
             <th>Name</th>
             <th>Status</th>
             <th>AgreementOwner</th>
@@ -38,7 +38,6 @@
 
         {{range .}}
         <tr>
-            <td>{{.AgreementID}}</td>
             <td>{{.Name}}</td>
             <td>{{.AgreementStatus}}</td>
             <td>{{.AgreementOwner}}</td>
@@ -57,23 +56,33 @@
 <!-- Initialize the DataTables plug-in -->
 <script>
 $(document).ready(function() {
-    
-    $('#myTable').DataTable( {
-        searchPanes: {
-            layout: 'columns-6'
-        },
-        dom: 'Pfrtip',
+  
+  $('#myTable').DataTable( {
+      dom: 'Bfrtip',
+      responsive: true,
+      buttons: [
+      {
+      extend: 'searchPanes',
+      config: {
+        layout:'columns-3',
+        cascadePanes: true,
+        deferRender: true,
+        columns: [1,2,3,4],
         columnDefs: [
             {
                 searchPanes: {
                     show: true
                 },
-                targets: [1]
+                targets: [1, 2, 3, 4]
             }
         ]
-    } );
+      }
+    },
+          'copy', 'csv', 'excel', 'pdf', 'print'
+      ],
+     
+      
+  } );
 });
-
-    
 
 </script>
