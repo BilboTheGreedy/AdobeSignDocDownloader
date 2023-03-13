@@ -7,14 +7,21 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/TwiN/go-color"
+	"github.com/go-echarts/go-echarts/v2/charts"
+	"github.com/go-echarts/go-echarts/v2/components"
+	"github.com/go-echarts/go-echarts/v2/opts"
 	scribble "github.com/nanobox-io/golang-scribble"
 	"github.com/schollz/progressbar/v3"
 )
@@ -30,7 +37,7 @@ var (
 	StatusRequested string
 )
 
-var r, _ = regexp.Compile("\\\\|\\||-|\"|/|:|\\*|\\?|<|>")
+var r, _ = regexp.Compile("\\\\|\\||-|\"|/|:|\\*|\\?|<|>|\\s+")
 
 // MakeFilenameWindowsFriendly removes characters not permitted in file/directory names on Windows
 func MakeFilenameWindowsFriendly(name string) string {
@@ -49,9 +56,11 @@ func main() {
 	bCache := flag.Bool("cache", false, "Make Cache Data")
 	bConsoleText := flag.Bool("console", false, "output console text")
 	bDebug := flag.Bool("debug", false, "Explain what's happening while program runs")
+	bChart := flag.Bool("chart", false, "Explain what's happening while program runs")
 	iMaxJobs := flag.Int("max", 40, "Max number of downloads concurrently")
 	sStatusReq := flag.String("status", "SIGNED", "Document Status")
-	sHttpProxy := flag.String("proxyaddr", "", "Document Status")
+	bVerify := flag.Bool("verify", false, "Explain what's happening while program runs")
+	sHttpProxy := flag.String("proxyaddr", "", "set proxy server")
 	flag.Parse()
 	//Set Env
 	if len(*sHttpProxy) > 0 {
@@ -67,6 +76,121 @@ func main() {
 	ConsoleText = *bConsoleText
 	StatusRequested = *sStatusReq
 	cfg = LoadConfiguration("config.json")
+	cfg.QueryEndpoint()
+
+	if *bVerify == true {
+		VerifyPaths(StatusRequested)
+		return
+	}
+
+	if *bChart == true {
+		NewTable()
+		VerifyTable()
+		data := make([]GeoCount, 0)
+		// Read JSON data from file
+		jsonData, err := ioutil.ReadFile("./Data/MergedCount.json")
+		if err != nil {
+			panic(err)
+		}
+		// Unmarshal JSON data into slice of Data structs
+		err = json.Unmarshal(jsonData, &data)
+		if err != nil {
+			panic(err)
+		}
+
+		mapData := []opts.MapData{}
+		for _, d := range data {
+			mapData = append(mapData, opts.MapData{Name: d.Name, Value: d.TotalAgreements})
+
+		}
+
+		mc := charts.NewMap()
+
+		mc.RegisterMapType("world")
+		//mc.Assets.JSAssets.Add("maps/sweden.js")
+		mc.SetGlobalOptions(
+			charts.WithTitleOpts(opts.Title{Title: "Epiroc - Agreement owner by Country"}),
+			charts.WithVisualMapOpts(opts.VisualMap{
+				Show:       true,
+				Calculable: true,
+				Type:       "piecewise",
+				InRange:    &opts.VisualMapInRange{Color: []string{"#50a3ba", "#eac736", "#d94e5d"}},
+				Max:        10000,
+				Min:        0,
+			}),
+		)
+		mc.SetGlobalOptions(charts.WithTooltipOpts(opts.Tooltip{Show: true}),
+			charts.WithParallelComponentOpts(opts.ParallelComponent{Top: "20%", Bottom: "20%"}))
+		mc.AddSeries("map", mapData)
+		f, err := os.Create("charts.html")
+		if err != nil {
+			fmt.Println(err)
+		}
+		///
+		db, _ := scribble.New("./Data", nil)
+		// Read from the cache database
+		groups, _ := db.ReadAll("Groups")
+
+		// iterate
+		c_data := Data{}
+		for _, group := range groups {
+			f := GroupInfoList{}
+			json.Unmarshal([]byte(group), &f)
+			c_data.Groups.GroupInfoList = append(c_data.Groups.GroupInfoList, &f)
+		}
+
+		statusCount := make(map[string]int)
+		for _, group := range c_data.Groups.GroupInfoList {
+			for _, userInfo := range group.GroupMembers.UserInfoList {
+				for _, agreement := range userInfo.Agreements.UserAgreementList {
+					statusCount[agreement.Status]++
+				}
+			}
+		}
+		var pdata []opts.PieData
+		for status, count := range statusCount {
+			pdata = append(pdata, opts.PieData{Name: status, Value: count})
+		}
+		pie := charts.NewPie()
+
+		pie.SetGlobalOptions(
+			charts.WithLegendOpts(opts.Legend{
+				Show: true,
+			}),
+			charts.WithTooltipOpts(opts.Tooltip{Show: true}),
+			charts.WithParallelComponentOpts(opts.ParallelComponent{Top: "100%", Bottom: "100%"}),
+		)
+
+		pie.AddSeries("Agreement Status", pdata).
+			SetSeriesOptions(charts.WithLabelOpts(
+				opts.Label{
+					Show:      true,
+					Formatter: "{b}: {c}",
+				}),
+				charts.WithPieChartOpts(opts.PieChart{
+					Radius:   []string{"30%", "75%"},
+					RoseType: "radius",
+					Center:   []string{"50%", "60%"},
+				}),
+			)
+
+			////
+		page := components.NewPage()
+		page.Assets.AddCustomizedCSSAssets("background-color: coral")
+		page.Theme = "vintage"
+		page.PageTitle = "Adobe Sign Graphs"
+		page.SetLayout(components.PageCenterLayout)
+
+		page.AddCharts(
+			mc,
+			pie,
+		)
+
+		page.Render(io.MultiWriter(f))
+		return
+
+	}
+
 	cfg.QueryEndpoint()
 	if *bCache == true {
 		// create a new scribble database, providing a destination for the database to live
@@ -122,8 +246,40 @@ func main() {
 				for i := 0; i < memberCount; i++ {
 					<-done
 				}
+
 			}
 
+		}
+
+		for _, g := range data.Groups.GroupInfoList {
+
+			//for each member
+			for _, m := range g.GroupMembers.UserInfoList {
+				var ma = m
+				//Maximum of concurrent downloads at one time
+				//So Adobe don't lock us out
+				maxGoroutines := *iMaxJobs
+				sem := make(chan int, maxGoroutines)
+				//for each agreement
+
+				for i, a := range m.Agreements.UserAgreementList {
+					var ag = a
+					if a.Status == StatusRequested {
+						if ConsoleText != true {
+							pb.Add(1)
+						}
+
+						sem <- 1
+						go func(i int) {
+							ag.GetDocuments(ma.ID)
+							<-sem // removes an int from sem, allowing another to proceed
+						}(i)
+
+					}
+
+				}
+
+			}
 		}
 		//Save Cache to fs
 		for _, item := range data.Groups.GroupInfoList {
@@ -153,9 +309,10 @@ func main() {
 		}
 		//for each group
 		for _, g := range c_data.Groups.GroupInfoList {
+			var ga = g
 			//for each member
 			for _, m := range g.GroupMembers.UserInfoList {
-
+				var ma = m
 				//Maximum of concurrent downloads at one time
 				//So Adobe don't lock us out
 				maxGoroutines := *iMaxJobs
@@ -163,17 +320,18 @@ func main() {
 				//for each agreement
 
 				for i, a := range m.Agreements.UserAgreementList {
+					var ag = a
 					if a.Status == StatusRequested {
 						if ConsoleText != true {
 							pb.Add(1)
 						}
 
 						sem <- 1
-						go func() {
+						go func(i int) {
 
-							DownloadWorker(i, cfg, g, m, a, false)
+							DownloadWorker(i, cfg, ga, ma, ag, false)
 							<-sem // removes an int from sem, allowing another to proceed
-						}()
+						}(i)
 
 					}
 
@@ -187,6 +345,7 @@ func main() {
 	logFile.Close()
 }
 
+// Init download of document
 func DownloadWorker(id int, cfg Configuration, group *GroupInfoList, User *UserInfoList, agreement *UserAgreementList, debug bool) {
 
 	if ConsoleText == true {
@@ -194,9 +353,16 @@ func DownloadWorker(id int, cfg Configuration, group *GroupInfoList, User *UserI
 	}
 
 	agreement.DownloadUserAgreement(cfg, group.GroupName, User.ID, User.Email)
+	agreement.DownloadAgreementDocuments(cfg, group.GroupName, User.ID, User.Email)
 
 }
 
+// Get Agreement Documents for given userID
+func (data *UserAgreementList) GetDocuments(UserID string) {
+	GetAgreementDocuments(cfg.Session.AccessToken, cfg.Session.baseURI.APIAccessPoint, &data, UserID, data.ID, true)
+}
+
+// Counts the number of agreements for given Status
 func (data *Data) CountAgreements(StatusRequested string) int {
 	var count int
 	for _, g := range data.Groups.GroupInfoList {
@@ -213,27 +379,64 @@ func (data *Data) CountAgreements(StatusRequested string) int {
 	}
 	return count
 }
+
+// Checks if Agreement is already downloaded
+func (data *UserAgreementList) IsAgreementDownloaded(cfg Configuration, GroupName string, UserID string, UserEmail string) bool {
+	name := MakeFilenameWindowsFriendly(data.Name) + "-Combined.pdf"
+	//fullPath := cfg.DownloadLocation + "\\" + GroupName + "\\" + UserEmail + "\\" + MakeFilenameWindowsFriendly(data.Name) + "(" + data.ID + ")\\"
+	p := filepath.Join(cfg.DownloadLocation, GroupName, UserEmail, name+"("+data.ID+")")
+	completePath := filepath.Join(p, name)
+	fmt.Println(completePath)
+	if _, err := os.Stat(completePath); err == nil {
+
+		return true
+
+	} else if errors.Is(err, os.ErrNotExist) {
+		// path/to/whatever does *not* exist
+		return false
+
+	}
+	return false
+}
+
+// Returns path to agreement
+func (data *UserAgreementList) GetAgreementPath(cfg Configuration, GroupName string, UserID string, UserEmail string) string {
+	name := MakeFilenameWindowsFriendly(data.Name) + "-Combined.pdf"
+	//fullPath := cfg.DownloadLocation + "\\" + GroupName + "\\" + UserEmail + "\\" + MakeFilenameWindowsFriendly(data.Name) + "(" + data.ID + ")\\"
+	p := filepath.Join(cfg.DownloadLocation, GroupName, UserEmail, name+"("+data.ID+")")
+	completePath := filepath.Join(p, name)
+	if _, err := os.Stat(completePath); err == nil {
+		return completePath
+	} else if errors.Is(err, os.ErrNotExist) {
+		// path/to/whatever does *not* exist
+		return ""
+	}
+	return ""
+}
+
+// check if agreement is already downloaded or starts it.
 func (data *UserAgreementList) DownloadUserAgreement(cfg Configuration, GroupName string, UserID string, UserEmail string) {
-
-	fullPath := cfg.DownloadLocation + "\\" + GroupName + "\\" + UserEmail + "\\" + MakeFilenameWindowsFriendly(data.Name) + "(" + data.ID + ")\\"
-
-	if _, err := os.Stat(fullPath + MakeFilenameWindowsFriendly(data.Name) + ".pdf"); err == nil {
+	name := MakeFilenameWindowsFriendly(data.Name) + "-Combined.pdf"
+	//fullPath := cfg.DownloadLocation + "\\" + GroupName + "\\" + UserEmail + "\\" + MakeFilenameWindowsFriendly(data.Name) + "(" + data.ID + ")\\"
+	p := filepath.Join(cfg.DownloadLocation, GroupName, UserEmail, MakeFilenameWindowsFriendly(data.Name)+" ("+data.ID+")")
+	completePath := filepath.Join(p, name)
+	if _, err := os.Stat(completePath); err == nil {
 		if ConsoleText == true {
-			println(color.Colorize(color.Cyan, "File already exists: "+fullPath+data.Name+".pdf"))
+			println(color.Colorize(color.Cyan, "File already exists: "+completePath))
 		}
 
 	} else if errors.Is(err, os.ErrNotExist) {
 		// path/to/whatever does *not* exist
-		err := DownloadAgreement(cfg.Session.AccessToken, cfg.Session.baseURI.APIAccessPoint, data.ID, UserID, fullPath, MakeFilenameWindowsFriendly(data.Name)+".pdf", debug)
+		err := DownloadAgreement(cfg.Session.AccessToken, cfg.Session.baseURI.APIAccessPoint, data.ID, UserID, p, name, debug)
 
 		if err != nil {
 			if ConsoleText == true {
-				println(color.Colorize(color.Red, "Download Failed: "+fullPath+data.Name))
+				println(color.Colorize(color.Red, "Download Failed: "+completePath))
 			}
 			return
 		} else {
 			if ConsoleText == true {
-				println(color.Colorize(color.Green, "Download Success: "+data.Name))
+				println(color.Colorize(color.Green, "Download Success: "+name))
 			}
 		}
 	} else {
@@ -245,6 +448,101 @@ func (data *UserAgreementList) DownloadUserAgreement(cfg Configuration, GroupNam
 
 }
 
+// Download user agreement documents. Checks if they are already downloaded.
+func (data *UserAgreementList) DownloadAgreementDocuments(cfg Configuration, GroupName string, UserID string, UserEmail string) {
+
+	for _, document := range data.Documents {
+		var completePath string
+		var name string
+		name = MakeFilenameWindowsFriendly(document.Name)
+		//fullPath := cfg.DownloadLocation + "\\" + GroupName + "\\" + UserEmail + "\\" + MakeFilenameWindowsFriendly(data.Name) + "(" + data.ID + ")\\"
+		p := filepath.Join(cfg.DownloadLocation, GroupName, UserEmail, MakeFilenameWindowsFriendly(data.Name)+" ("+data.ID+")")
+		extension := filepath.Ext(document.Name)
+		if extension == "" {
+			name = name + ".pdf"
+		}
+		completePath = filepath.Join(p, name)
+		if _, err := os.Stat(completePath); err == nil {
+			if ConsoleText == true {
+				println(color.Colorize(color.Cyan, "File already exists: "+completePath))
+			}
+
+		} else if errors.Is(err, os.ErrNotExist) {
+			// path/to/whatever does *not* exist
+			err := DownloadDocuments(cfg.Session.AccessToken, cfg.Session.baseURI.APIAccessPoint, data.ID, document.ID, UserID, p, name, debug)
+
+			if err != nil {
+				if ConsoleText == true {
+					println(color.Colorize(color.Red, "Download Failed: "+completePath))
+				}
+				return
+			} else {
+				if ConsoleText == true {
+					println(color.Colorize(color.Green, "Download Success: "+name))
+				}
+			}
+		} else {
+			// file may or may not exist. See err for details.
+			fmt.Println(err)
+			// Therefore, do *NOT* use !os.IsNotExist(err) to test for file existence
+
+		}
+	}
+
+}
+
+// HTTP Get download document
+func DownloadDocuments(ACCESSTOKEN string, baseUri string, AgreementID string, DocumentID string, UserID string, filePath string, fileName string, debug bool) error {
+	path := filePath
+	err := os.MkdirAll(path, os.ModePerm)
+	if err != nil {
+		log.Println(err)
+	}
+
+	// Create the file
+	out, err := os.Create(filepath.Join(filePath, fileName))
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	tr := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true, MinVersion: tls.VersionTLS10, MaxVersion: tls.VersionTLS13},
+	}
+
+	url := baseUri + "api/rest/v6/agreements/" + AgreementID + "/documents/" + DocumentID
+	if debug == true {
+		fmt.Println("URL:>", url)
+	}
+
+	for i := 0; i < 3; i++ { // try 3 times
+		req, err := http.NewRequest("GET", url, nil)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-user", "userid:"+UserID)
+		req.Header.Add("Authorization", "Bearer "+ACCESSTOKEN)
+		client := &http.Client{Transport: tr}
+		resp, err := client.Do(req)
+		if err != nil && strings.Contains(err.Error(), "wsarecv") || err != nil && strings.Contains(err.Error(), "Unsolicited") {
+			// wsarecv error occurred
+			println(color.Colorize(color.Yellow, "\nRetry Download Count: "+strconv.Itoa(i)) + " : " + fileName)
+			time.Sleep(time.Second * 10) // wait for 10 seconds
+			continue                     // retry request
+		}
+		defer resp.Body.Close()
+		// Writer the body to file
+		_, err = io.Copy(out, resp.Body)
+		if err != nil {
+			return err
+		}
+
+		break // no error or other error
+	}
+
+	return nil
+}
+
+// HTTP Download Agreement Combined Document
 func DownloadAgreement(ACCESSTOKEN string, baseUri string, AgreementID string, UserID string, filePath string, fileName string, debug bool) error {
 	path := filePath
 	err := os.MkdirAll(path, os.ModePerm)
@@ -253,7 +551,7 @@ func DownloadAgreement(ACCESSTOKEN string, baseUri string, AgreementID string, U
 	}
 
 	// Create the file
-	out, err := os.Create(filePath + fileName)
+	out, err := os.Create(filepath.Join(filePath, fileName))
 	if err != nil {
 		return err
 	}
@@ -268,8 +566,82 @@ func DownloadAgreement(ACCESSTOKEN string, baseUri string, AgreementID string, U
 	if debug == true {
 		fmt.Println("URL:>", url)
 	}
+	for i := 0; i < 3; i++ { // try 3 times
+		req, err := http.NewRequest("GET", url, nil)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-user", "userid:"+UserID)
+		req.Header.Add("Authorization", "Bearer "+ACCESSTOKEN)
+		client := &http.Client{Transport: tr}
+		resp, err := client.Do(req)
+		if err != nil && strings.Contains(err.Error(), "wsarecv") || err != nil && strings.Contains(err.Error(), "Unsolicited") {
+			// wsarecv error occurred
+			println(color.Colorize(color.Yellow, "\nRetry Download Count: "+strconv.Itoa(i)) + " : " + fileName)
+			time.Sleep(time.Second * 10) // wait for 10 seconds
+			continue                     // retry request
+		}
+		defer resp.Body.Close()
+		// Writer the body to file
+		_, err = io.Copy(out, resp.Body)
+		if err != nil {
+			return err
+		}
 
+		break // no error or other error
+	}
+	return nil
+}
+
+// Query given user for Agreements and saves them to data struct
+func (data *UserInfoList) QueryUseAgreement(AccessToken string, URI string) {
+
+	GetUserAgreements(AccessToken, URI, &data.Agreements, data.ID, debug)
+	for _, a := range data.Agreements.UserAgreementList {
+		fmt.Println("Found Agreement", a.ID, "On user:", data.ID)
+	}
+
+}
+
+// Worker for getting Agreements
+func GetUserAgreementsWorker(id int, AccessToken string, URI string, members <-chan *UserInfoList, done chan<- bool) {
+	for member := range members {
+
+		if debug != true {
+			fmt.Println("Worker", id, ": Received job", member.Email)
+		}
+
+		member.QueryUseAgreement(AccessToken, URI)
+
+		done <- true
+	}
+
+}
+
+// Gets User Documents
+func GetUserDocuments(id int, AccessToken string, URI string, MemberID string, agreements <-chan *UserAgreementList, done chan<- bool) {
+	for agreement := range agreements {
+
+		if debug != true {
+			fmt.Println("Worker", id, ": Received job", MemberID)
+		}
+
+		agreement.GetDocuments(MemberID)
+		done <- true
+	}
+
+}
+
+// HTTP GET: Get Agreement Documents
+func GetAgreementDocuments(ACCESSTOKEN string, baseUri string, target interface{}, UserID string, agreementID string, debug bool) error {
+	tr := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	url := baseUri + "api/rest/v6/agreements/" + agreementID + "/documents?pageSize=10000"
+	if debug == true {
+		fmt.Println("URL:>", url)
+	}
 	req, err := http.NewRequest("GET", url, nil)
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-user", "userid:"+UserID)
 	req.Header.Add("Authorization", "Bearer "+ACCESSTOKEN)
@@ -280,37 +652,12 @@ func DownloadAgreement(ACCESSTOKEN string, baseUri string, AgreementID string, U
 		panic(err)
 	}
 	defer resp.Body.Close()
-	// Writer the body to file
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return err
-	}
 
-	return nil
-}
-
-func (data *UserInfoList) QueryUseAgreement(AccessToken string, URI string) {
-
-	GetUserAgreements(AccessToken, URI, &data.Agreements, data.ID, debug)
-	for _, a := range data.Agreements.UserAgreementList {
-		fmt.Println("Found Agreement", a.ID, "On user:", data.ID)
-	}
+	return json.NewDecoder(resp.Body).Decode(&target)
 
 }
 
-func GetUserAgreementsWorker(id int, AccessToken string, URI string, members <-chan *UserInfoList, done chan<- bool) {
-	for member := range members {
-
-		if debug != true {
-			fmt.Println("Worker", id, ": Received job", member.Email)
-		}
-
-		member.QueryUseAgreement(AccessToken, URI)
-		done <- true
-	}
-
-}
-
+// HTTP GET: Get User Agreements
 func GetUserAgreements(ACCESSTOKEN string, baseUri string, target interface{}, UserID string, debug bool) error {
 	tr := &http.Transport{
 		Proxy:           http.ProxyFromEnvironment,
@@ -338,6 +685,7 @@ func GetUserAgreements(ACCESSTOKEN string, baseUri string, target interface{}, U
 
 }
 
+// HTTP GET: Query Adobe Sign Endpoint
 func (cfg *Configuration) QueryEndpoint() {
 	//GetEndpoint(cfg.Session.AccessToken, cfg)
 
@@ -366,6 +714,7 @@ func (cfg *Configuration) QueryEndpoint() {
 
 }
 
+// HTTP GET: Query groups in Adobe Sign
 func (data *Data) QueryGroups(cfg Configuration) {
 	tr := &http.Transport{
 		Proxy:           http.ProxyFromEnvironment,
@@ -392,11 +741,13 @@ func (data *Data) QueryGroups(cfg Configuration) {
 
 }
 
+// Get Group members for given Group
 func (data *GroupInfoList) QueryGroupMembers(AccessToken string, URI string) {
 	GetGroupMembers(AccessToken, URI, data.GroupID, data.GroupName, &data.GroupMembers, debug)
 
 }
 
+// HTTP GET: Get Group member
 func GetGroupMembers(AccessToken string, URI string, GroupID string, GroupName string, target interface{}, debug bool) error {
 
 	tr := &http.Transport{
@@ -423,6 +774,7 @@ func GetGroupMembers(AccessToken string, URI string, GroupID string, GroupName s
 	return json.NewDecoder(resp.Body).Decode(&target)
 }
 
+// GO Routine Worker func: Get Group Member
 func GetGroupMembersWorker(id int, AccessToken string, URI string, groups <-chan *GroupInfoList, done chan<- bool) {
 	for group := range groups {
 		if debug != true {
@@ -435,6 +787,7 @@ func GetGroupMembersWorker(id int, AccessToken string, URI string, groups <-chan
 
 }
 
+// Load config.json
 func LoadConfiguration(file string) Configuration {
 	var config Configuration
 	configFile, err := os.Open(file)

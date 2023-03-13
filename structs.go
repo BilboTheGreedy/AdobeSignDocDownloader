@@ -78,4 +78,62 @@ type UserAgreementList struct {
 	ParentID        string `json:"parentId"`
 	Status          string `json:"status"`
 	Type            string `json:"type"`
+	Documents       []struct {
+		CreatedDate string `json:"createdDate"`
+		ID          string `json:"id"`
+		Label       string `json:"label"`
+		NumPages    int    `json:"numPages"`
+		MimeType    string `json:"mimeType"`
+		Name        string `json:"name"`
+	} `json:"documents"`
+	SupportingDocuments []struct {
+		DisplayLabel  string `json:"displayLabel"`
+		FieldName     string `json:"fieldName"`
+		ID            string `json:"id"`
+		MimeType      string `json:"mimeType"`
+		NumPages      int    `json:"numPages"`
+		ParticipantID string `json:"participantId"`
+	} `json:"supportingDocuments"`
 }
+
+type GeoData struct {
+	Email           string `json:"Email"`
+	Groups          string `json:"Groups"`
+	AgreementsCount string `json:"AgreementsCount"`
+	Country         string `json:"Country"`
+	City            string `json:"City"`
+	Coordinates     struct {
+		Value []float64 `json:"value"`
+		Count int       `json:"Count"`
+	} `json:"Coordinates"`
+}
+
+type GeoCount struct {
+	Name            string
+	TotalAgreements int
+}
+
+type GeoMap struct {
+	Country []struct {
+		Name            string
+		Coordinates     []float64
+		CountAgreements int
+		City            []struct {
+			Name            string
+			Coordinates     []float64
+			CountAgreements int
+		}
+	}
+}
+
+type Entry struct {
+	AgreementID     string
+	Name            string
+	AgreementStatus string
+	AgreementOwner  string
+	Group           string
+	IsDownloaded    string
+	FilePath        string
+}
+
+type LineEntry [][]string

@@ -1,0 +1,79 @@
+<!-- Include the jQuery and DataTables JavaScript files -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.11.3/js/jquery.dataTables.min.js"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/searchpanes/2.1.1/css/searchPanes.dataTables.min.css">
+<script src="https://cdn.datatables.net/searchpanes/2.1.1/js/dataTables.searchPanes.min.js"></script>
+<script src="https://cdn.datatables.net/select/1.6.1/js/dataTables.select.min.js"></script>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.11.3/css/jquery.dataTables.min.css">
+<style>
+    .downloaded {
+    background-color: red;
+}
+</style>
+
+<div class="alert alert-info" role="alert">
+    Only the combined document is checked if downloaded in this table. Note that this page takes a very long time to finish loading.
+  </div>
+
+<div class="container">
+    <div class="row justify-content-md-center">
+        {{template "Links.html"}}
+    </div>
+    <div class="row">
+      <div class="col-md-auto">
+        
+<table id="myTable" class="table">
+    <thead>
+        <tr>
+            <th>AgreementID</th>
+            <th>Name</th>
+            <th>Status</th>
+            <th>AgreementOwner</th>
+            <th>Group</th>
+            <th>IsDownloaded</th>
+            <th>FilePath</th>
+        </tr>
+    </thead>
+    <tbody>
+
+        {{range .}}
+        <tr>
+            <td>{{.AgreementID}}</td>
+            <td>{{.Name}}</td>
+            <td>{{.AgreementStatus}}</td>
+            <td>{{.AgreementOwner}}</td>
+            <td>{{.Group}}</td>
+            <td>{{.IsDownloaded}}</td>
+            <td>{{.FilePath}}</td>
+        </tr>
+        {{end}}
+    </tbody>
+</table>
+      </div>
+    </div>
+  </div>
+<div class="container-md">
+  
+<!-- Initialize the DataTables plug-in -->
+<script>
+$(document).ready(function() {
+    
+    $('#myTable').DataTable( {
+        searchPanes: {
+            layout: 'columns-6'
+        },
+        dom: 'Pfrtip',
+        columnDefs: [
+            {
+                searchPanes: {
+                    show: true
+                },
+                targets: [1]
+            }
+        ]
+    } );
+});
+
+    
+
+</script>
