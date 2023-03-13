@@ -34,7 +34,7 @@ Usage AdobeSignDocDownloader.exe:
   -console
         output console text
   -debug
-        Explain what's happening while program runs
+        Explain whats happening while program runs
   -max int
         Max number of downloads concurrently (default 40)
   -proxyaddr string
