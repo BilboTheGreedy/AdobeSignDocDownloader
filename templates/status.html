@@ -1,4 +1,9 @@
-{{template "sources.html"}}
+<head>
+    <title>Sign Status</title>
+    {{template "sources.html"}}
+</head>
+
+
 
 <div class="container">
     <div class="row justify-content-md-center">
@@ -9,7 +14,7 @@
         <br>
 
 
-<table id="myTable" class="display nowrap" style="width:100%">
+<table id="myTable" class="display" cellspacing="0" width="100%">
     <thead>
         <tr>
             <th>User</th>
@@ -37,8 +42,12 @@
 <script>
 $(document).ready(function() {
     $('#myTable').DataTable( {
-        dom: 'Bfrtip',
+        dom: 'Bfrti<"pull-right"p>',
         responsive: true,
+        paging: true,
+        pageLength: 25,
+        lengthMenu: [ 10, 25, 50, 75, 100 ],
+        lengthChange: true,
         buttons: [
         {
             extend: 'searchPanes',

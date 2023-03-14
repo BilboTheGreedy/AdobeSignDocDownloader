@@ -18,6 +18,7 @@ import (
 
 	"github.com/TwiN/go-color"
 	"github.com/go-echarts/go-echarts/v2/components"
+	tpls "github.com/go-echarts/go-echarts/v2/templates"
 	scribble "github.com/nanobox-io/golang-scribble"
 	"github.com/schollz/progressbar/v3"
 )
@@ -31,6 +32,7 @@ var (
 	pb              progressbar.ProgressBar
 	ConsoleText     bool
 	StatusRequested string
+	PrimaryGroup    bool
 )
 
 var r, _ = regexp.Compile("\\\\|\\||-|\"|/|:|\\*|\\?|<|>|\\s+")
@@ -56,6 +58,7 @@ func main() {
 	iMaxJobs := flag.Int("max", 40, "Max number of downloads concurrently")
 	sStatusReq := flag.String("status", "SIGNED", "Document Status")
 	bVerify := flag.Bool("verify", false, "Verify that files have been downloaded")
+	bPrimaryGroup := flag.Bool("primarygroup", false, "Download documents only for primary user group")
 	sHttpProxy := flag.String("proxyaddr", "", "set proxy server")
 	flag.Parse()
 	//Set Env
@@ -72,11 +75,11 @@ func main() {
 	debug = *bDebug
 	ConsoleText = *bConsoleText
 	StatusRequested = *sStatusReq
+	PrimaryGroup = *bPrimaryGroup
 	cfg = LoadConfiguration("config.json")
 	cfg.QueryEndpoint()
 
 	if *bVerify == true {
-
 		VerifyPaths(StatusRequested)
 		return
 	}
@@ -89,8 +92,67 @@ func main() {
 		if err != nil {
 			fmt.Println(err)
 		}
+		tpls.PageTpl = `
+		{{- define "page" }}
+		<!DOCTYPE html>
+		<html>
+			{{- template "header" . }}
+		<body>
+		<style>
+		ul {
+		list-style-type: none;
+		margin: 0;
+		padding: 0;
+		overflow: hidden;
+		background-color: #333;
+		}
+
+		li {
+		float: left;
+		}
+
+		li a {
+		display: block;
+		color: white;
+		text-align: center;
+		padding: 14px 16px;
+		text-decoration: none;
+		}
+
+		/* Change the link color to #111 (black) on hover */
+		li a:hover {
+		background-color: #111;
+		}
+		</style>   
+
+		<ul class="nav">
+				<li class="nav-item">
+					<a class="nav-link" href="./charts.html">Charts</a>
+				</li>
+				<li class="nav-item">
+				<a class="nav-link" href="./table.html">Downloaded</a>
+				</li>
+				<li class="nav-item">
+					<a class="nav-link" href="./Status.html">Status</a>
+				</li>
+		</ul>
+
+		{{ if eq .Layout "none" }}
+			{{- range .Charts }} {{ template "base" . }} {{- end }}
+		{{ end }}
+		{{ if eq .Layout "center" }}
+			<style> .container {display: flex;justify-content: center;align-items: center;} .item {margin: auto;} </style>
+			{{- range .Charts }} {{ template "base" . }} {{- end }}
+		{{ end }}
+		{{ if eq .Layout "flex" }}
+			<style> .box { justify-content:center; display:flex; flex-wrap:wrap } </style>
+			<div class="box"> {{- range .Charts }} {{ template "base" . }} {{- end }} </div>
+		{{ end }}
+		</body>
+		</html>
+		{{ end }}
+		`
 		page := components.NewPage()
-		page.Assets.AddCustomizedCSSAssets("background-color: coral")
 		page.Theme = "vintage"
 		page.PageTitle = "Adobe Sign Graphs"
 		page.SetLayout(components.PageCenterLayout)
@@ -137,7 +199,28 @@ func main() {
 		for i := 0; i < groupCount; i++ {
 			<-done
 		}
+
 		//Goroutine done for: GROUP/Members
+
+		//Set up for goroutines: GROUPS/Members/PRIMARY GROUP
+		for _, group := range data.Groups.GroupInfoList {
+			memberCount := len(group.GroupMembers.UserInfoList)
+			members := make(chan *UserInfoList, memberCount)
+			done := make(chan bool, groupCount)
+			for i, _ := range group.GroupMembers.UserInfoList {
+				go GetPrimaryGroupWorker(i, cfg.Session.AccessToken, cfg.Session.baseURI.APIAccessPoint, members, done)
+			}
+			for _, member := range group.GroupMembers.UserInfoList {
+				members <- member
+
+			}
+			close(members)
+			for i := 0; i < memberCount; i++ {
+				<-done
+			}
+		}
+
+		//Goroutine done for: GROUP/Members/PRIMARY GROUP
 
 		//Goroutine start for: USER/Agreements
 		for _, group := range data.Groups.GroupInfoList {
@@ -226,26 +309,34 @@ func main() {
 			//for each member
 			for _, m := range g.GroupMembers.UserInfoList {
 				var ma = m
+
 				//Maximum of concurrent downloads at one time
 				//So Adobe don't lock us out
 				maxGoroutines := *iMaxJobs
 				sem := make(chan int, maxGoroutines)
 				//for each agreement
-
 				for i, a := range m.Agreements.UserAgreementList {
 					var ag = a
-					if a.Status == StatusRequested {
+					//Get all documents with given status and only from primary group
+					if a.Status == StatusRequested && ma.PrimaryGroupID == ag.GroupID && PrimaryGroup == true {
 						if ConsoleText != true {
 							pb.Add(1)
 						}
-
 						sem <- 1
 						go func(i int) {
-
 							DownloadWorker(i, cfg, ga, ma, ag, false)
 							<-sem // removes an int from sem, allowing another to proceed
 						}(i)
-
+						//Get all documents with given Status
+					} else if a.Status == StatusRequested && PrimaryGroup != true {
+						if ConsoleText != true {
+							pb.Add(1)
+						}
+						sem <- 1
+						go func(i int) {
+							DownloadWorker(i, cfg, ga, ma, ag, false)
+							<-sem // removes an int from sem, allowing another to proceed
+						}(i)
 					}
 
 				}
@@ -658,6 +749,47 @@ func (data *GroupInfoList) QueryGroupMembers(AccessToken string, URI string) {
 
 }
 
+// Get Group members for given Group
+func (data *UserInfoList) QueryPrimaryGroup(AccessToken string, URI string) {
+	res := GetPrimaryGroup(cfg.Session.AccessToken, cfg.Session.baseURI.APIAccessPoint, data.ID, false)
+	for _, r := range res.GroupInfoList {
+		if r.IsPrimaryGroup {
+			data.PrimaryGroupID = r.ID
+		}
+	}
+
+}
+
+// HTTP GET: Get Group member
+func GetPrimaryGroup(AccessToken string, URI string, UserID string, debug bool) Result {
+
+	result := Result{}
+
+	tr := &http.Transport{
+		Proxy:           http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	url := URI + "api/rest/v6/users/" + UserID + "/groups"
+	if debug == true {
+		fmt.Println("URL:>", url)
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Add("Authorization", "Bearer "+AccessToken)
+
+	client := &http.Client{Transport: tr}
+	resp, err := client.Do(req)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	return result
+}
+
 // HTTP GET: Get Group member
 func GetGroupMembers(AccessToken string, URI string, GroupID string, GroupName string, target interface{}, debug bool) error {
 
@@ -693,6 +825,18 @@ func GetGroupMembersWorker(id int, AccessToken string, URI string, groups <-chan
 		}
 
 		group.QueryGroupMembers(AccessToken, URI)
+		done <- true
+	}
+
+}
+
+func GetPrimaryGroupWorker(id int, AccessToken string, URI string, users <-chan *UserInfoList, done chan<- bool) {
+	for user := range users {
+		if debug != true {
+			fmt.Println("Worker", id, ": Received job PRIMARY GROUP", user.Email)
+		}
+
+		user.QueryPrimaryGroup(AccessToken, URI)
 		done <- true
 	}
 

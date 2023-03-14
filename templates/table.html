@@ -1,4 +1,7 @@
-{{template "sources.html"}}
+<head>
+    <title>Document Download</title>
+    {{template "sources.html"}}
+</head>
 
 <style>
     .alert {
@@ -23,7 +26,7 @@
         <br>
 
 
-<table id="myTable" class="display nowrap" style="width:100%">
+<table id="myTable" class="display" cellspacing="0" width="100%">
     <thead>
         <tr>
             <th>Name</th>
@@ -60,6 +63,7 @@ $(document).ready(function() {
   $('#myTable').DataTable( {
       dom: 'Bfrtip',
       responsive: true,
+      pageLength: 25,
       buttons: [
       {
       extend: 'searchPanes',

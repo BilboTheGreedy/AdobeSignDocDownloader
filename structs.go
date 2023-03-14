@@ -46,13 +46,14 @@ type GroupMembers struct {
 }
 
 type UserInfoList struct {
-	Email        string `json:"email"`
-	ID           string `json:"id"`
-	IsGroupAdmin bool   `json:"isGroupAdmin"`
-	Company      string `json:"company"`
-	FirstName    string `json:"firstName"`
-	LastName     string `json:"lastName"`
-	Agreements   Agreements
+	Email          string `json:"email"`
+	ID             string `json:"id"`
+	PrimaryGroupID string
+	IsGroupAdmin   bool   `json:"isGroupAdmin"`
+	Company        string `json:"company"`
+	FirstName      string `json:"firstName"`
+	LastName       string `json:"lastName"`
+	Agreements     Agreements
 }
 
 type Agreements struct {
@@ -137,3 +138,32 @@ type Entry struct {
 }
 
 type LineEntry [][]string
+
+type Result struct {
+	GroupInfoList []struct {
+		CreatedDate    string `json:"createdDate"`
+		ID             string `json:"id"`
+		IsGroupAdmin   bool   `json:"isGroupAdmin"`
+		IsPrimaryGroup bool   `json:"isPrimaryGroup"`
+		Name           string `json:"name"`
+		Settings       struct {
+			LibaryDocumentCreationVisible struct {
+				Inherited bool `json:"inherited"`
+				Value     bool `json:"value"`
+			} `json:"libaryDocumentCreationVisible"`
+			SendRestrictedToWorkflows struct {
+				Inherited bool `json:"inherited"`
+				Value     bool `json:"value"`
+			} `json:"sendRestrictedToWorkflows"`
+			UserCanSend struct {
+				Inherited bool `json:"inherited"`
+				Value     bool `json:"value"`
+			} `json:"userCanSend"`
+			WidgetCreationVisible struct {
+				Inherited bool `json:"inherited"`
+				Value     bool `json:"value"`
+			} `json:"widgetCreationVisible"`
+		} `json:"settings"`
+		Status string `json:"status"`
+	} `json:"groupInfoList"`
+}
