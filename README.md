@@ -1,4 +1,8 @@
 # AdobeSignDocDownloader
+
+## What is Adobe Acrobat e-Sign?
+Adobe Acrobat Sign (formerly EchoSign, eSign & Adobe Sign) is a cloud-based e-signature service that allows the user to send, sign, track, and manage signature processes using a browser or mobile device.[4] It is part of the Adobe Document Cloud suite of services.
+
 Utility to download and sync documents to filesystem from Adobe Sign. Built to run on Windows. Paths/Filenames are set to be Windows friendly.
 
 ## Build cache data
